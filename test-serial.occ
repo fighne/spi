@@ -1,0 +1,7 @@
+#INCLUDE "plumbing.module"
+
+PROC main ()
+  SEQ
+    serial.start(0, 57600)
+    serial.write.string(0, "Hi*n")
+:

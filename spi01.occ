@@ -1,0 +1,99 @@
+#INCLUDE "plumbing.module"
+
+VAL BYTE SPI.CLOCK.DIV4 IS #00:
+VAL BYTE SPI.CLOCK.DIV16 IS #01:
+VAL BYTE SPI.CLOCK.DIV64 IS #02:
+VAL BYTE SPI.CLOCK.DIV128 IS #03:
+VAL BYTE SPI.CLOCK.DIV2 IS #04:
+VAL BYTE SPI.CLOCK.DIV8 IS #05:
+VAL BYTE SPI.CLOCK.DIV32 IS #06:
+--VAL INT SPI.CLOCK.DIV64 IS #07:
+
+VAL BYTE SPI.MODE0 IS #00:
+VAL BYTE SPI.MODE1 IS #04:
+VAL BYTE SPI.MODE2 IS #08:
+VAL BYTE SPI.MODE3 IS #0C:
+
+VAL BYTE SPI.MODE.MASK IS #0C:  
+VAL BYTE SPI.CLOCK.MASK IS #03: 
+VAL BYTE SPI.2XCLOCK.MASK IS #01:
+
+
+-- http://arduino.cc/en/Reference/SPI
+VAL INT SS IS 10:
+VAL INT MOSI IS 11:
+VAL INT MISO IS 12:
+VAL INT SCK IS 13:
+
+-- https://github.com/arduino/Arduino/blob/master/libraries/SPI/SPI.cpp
+-- https://github.com/arduino/Arduino/blob/master/libraries/SPI/SPI.h
+PROC spi.begin ()
+  PLACED [MAX.PORT]BYTE ports 0:  
+  SEQ
+    digital.write (SS, HIGH)
+    digital.mode (SS, OUTPUT)
+    ports[SPCR] := ports[SPCR] BITOR BV(MSTR)
+    ports[SPCR] := ports[SPCR] BITOR BV(SPE)
+    digital.mode (SCK, OUTPUT)
+    digital.mode (MOSI, OUTPUT)
+:
+
+VAL INT LSBFIRST IS 0:
+VAL INT MSBFIRST IS 1:
+
+PROC spi.set.bit.order (BYTE order)
+  PLACED [MAX.PORT]BYTE ports 0:  
+  IF
+    order = (BYTE LSBFIRST)
+      ports[SPCR] := ports[SPCR] BITOR BV(DORD)
+    TRUE
+      ports[SPCR] := ports[SPCR] BITAND (BITNOT BV(DORD))
+:
+
+INLINE PROC spi.set.data.mode (BYTE mode)
+  PLACED [MAX.PORT]BYTE ports 0:    
+  ports[SPCR] := ((ports[SPCR] BITAND (BITNOT (BYTE SPI.MODE.MASK))) BITOR mode)
+:
+    
+PROC spi.transfer (VAL BYTE b, RESULT BYTE dr)
+  PLACED [MAX.PORT]BYTE ports 0:  
+  SEQ
+    ports[SPDR] := b
+    INITIAL BYTE v IS (ports[SPSR] BITAND BV(SPIF)):
+    SEQ
+      serial.write.int (0, (INT v))
+      
+      WHILE (v = 0)
+        SEQ
+          v := ports[SPSR] BITAND BV(SPIF)
+          serial.write.int (0, (INT v))
+          delay (100)
+      dr := ports[SPDR]
+:
+
+PROC spi.set.clock.divider (VAL BYTE rate)
+  PLACED [MAX.PORT]BYTE ports 0:  
+  SEQ
+    ports[SPCR] := ((ports[SPCR] BITAND (BITNOT (BYTE SPI.CLOCK.MASK))) BITOR (rate BITAND (BYTE SPI.CLOCK.MASK)))
+    ports[SPSR] := ((ports[SPSR] BITAND (BITNOT (BYTE SPI.2XCLOCK.MASK))) BITOR ((rate >> 2) BITAND SPI.2XCLOCK.MASK))
+:
+
+PROC main ()
+  INITIAL BYTE b IS 0:
+  BYTE r:
+  SEQ
+    spi.begin()
+    spi.set.clock.divider(SPI.CLOCK.DIV8)
+    
+    serial.start (0, 57600)
+    
+    WHILE TRUE
+      SEQ
+        serial.write.string (0, "a*n")
+        delay (500)
+        serial.write.string (0, "b*n")
+        spi.transfer (b, r)
+        spi.transfer ('*n', r)
+        b := b PLUS 1
+        serial.write.string (0, "c*n")
+:
